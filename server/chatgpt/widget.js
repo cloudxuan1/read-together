@@ -56,6 +56,7 @@ window.__booksCaptureView = (annotationId) => {
     chapter: reading ? R.ch : 0,
     seq,
     pageOffset: reading ? Math.max(0, R.page - (firstPage || 0)) : 0,
+    scrollOffset: reading && settings.pageMode === 'scroll' ? captureReadingAnchor()?.offset || 0 : 0,
     annotationId: annotationId || (sheet.classList.contains('open') && R.sheetMode === 'detail' ? R.detailAnno?.id : null)
   };
   const serialized = JSON.stringify(view);
@@ -82,7 +83,9 @@ boot().then(async () => {
           await window.__booksResumeView(true);
           await new Promise(requestAnimationFrame);
           await enterReader(chapter, Number(view.seq) || 0);
-          if (Number.isInteger(view.pageOffset) && view.pageOffset > 0) gotoPage(R.page + view.pageOffset, { silentIfSame: true });
+          if (settings.pageMode === 'scroll' && Number.isFinite(view.scrollOffset)) {
+            restoreReadingAnchor({ seq: Number(view.seq) || 0, offset: view.scrollOffset });
+          } else if (Number.isInteger(view.pageOffset) && view.pageOffset > 0) gotoPage(R.page + view.pageOffset, { silentIfSame: true });
         }
         const annotation = R.annos.find(item => item.id === view.annotationId);
         if (annotation) openSheet('detail', annotation, { jump: !view.reading });

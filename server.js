@@ -20,6 +20,8 @@ const DWELL_MAX_S = 60;
 const PRESENCE_STALE_MS = Math.max(30_000, Number(process.env.READING_PRESENCE_STALE_MS || 65_000));
 const CHATGPT_CONTROL_TOKEN = String(process.env.READING_CHATGPT_CONTROL_TOKEN || "").trim();
 const MCP_CONTROL_TOKEN = String(process.env.READING_MCP_CONTROL_TOKEN || "").trim();
+const WEB_CHANNEL = process.env.READING_WEB_CHANNEL || "codex";
+if (!["codex", "chatgpt"].includes(WEB_CHANNEL)) throw new Error("Invalid READING_WEB_CHANNEL");
 
 // 停留时长可被前端设置覆盖（存 state.json），否则用环境变量/默认值
 function dwellMsOf(state) {
@@ -529,7 +531,9 @@ async function addCommentWithDelivery(bookId, annoId, body, { wake = false, chan
   });
   comment.delivery = {
     target: "home",
-    status: result?.ok ? "accepted" : "failed",
+    // The comment is already durable. A disabled bridge is a saved note,
+    // not a failed send; a configured bridge can still fail independently.
+    status: result?.ok ? "accepted" : result?.dryRun ? "saved" : "failed",
     deliveryId: comment.id,
     updatedAt: new Date().toISOString(),
   };
@@ -996,7 +1000,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const authenticatedChannel = mcpChannel(req);
-    const channel = authenticatedChannel || "codex";
+    const channel = authenticatedChannel || WEB_CHANNEL;
     const booksUiPrefix = "/api/internal/mcp/ui";
     const isInternalBooksUi = p === booksUiPrefix || p.startsWith(`${booksUiPrefix}/`);
     if (isInternalBooksUi) {
@@ -1188,12 +1192,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && p === "/api/annotations") {
       const body = await readBody(req);
-      const callDelivery = !isInternalBooksUi && String(body.delivery || "") === "call";
+      const callDelivery = channel === "codex" && !isInternalBooksUi && String(body.delivery || "") === "call";
       const out = createAnnotation(body, {
         gate: false,
         channel,
-        wake: !isInternalBooksUi && !callDelivery,
-        sharedTarget: isInternalBooksUi ? "chatgpt" : callDelivery ? "call" : "",
+        wake: channel === "codex" && !isInternalBooksUi && !callDelivery,
+        sharedTarget: channel === "chatgpt" ? "chatgpt" : callDelivery ? "call" : "",
       });
       return send(res, out.status, out.json);
     }
@@ -1217,8 +1221,8 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && (m = p.match(/^\/api\/annotations\/([\w-]+)\/([\w-]+)\/comment$/))) {
       const body = await readBody(req);
-      const callDelivery = !isInternalBooksUi && String(body.delivery || "") === "call";
-      const out = await addCommentWithDelivery(m[1], m[2], body, { wake: !isInternalBooksUi && !callDelivery, channel });
+      const callDelivery = channel === "codex" && !isInternalBooksUi && String(body.delivery || "") === "call";
+      const out = await addCommentWithDelivery(m[1], m[2], body, { wake: channel === "codex" && !isInternalBooksUi && !callDelivery, channel });
       return send(res, out.status, out.json);
     }
 

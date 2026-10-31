@@ -160,10 +160,10 @@ test('page-margin annotations keep one real Home avatar while replies stay avata
 test('page-margin reply feedback follows delivery truth instead of a missing-reply guess', () => {
   assert.match(html, /delivery\?\.status === 'failed'/);
   assert.match(html, /comment\.final === false/);
-  assert.match(html, /正在送给\$\{replyPartnerLabel\(\)\}/);
+  assert.match(html, /正在保存评论/);
   assert.match(html, /\$\{replyPartnerLabel\(\)\}在回你/);
   assert.match(html, /return People\.companion\.name/);
-  assert.match(html, /这次没送到/);
+  assert.match(html, /评论已保存，通知未送达/);
   assert.match(html, /data-retry-reply/);
   assert.doesNotMatch(html, /那里了/);
   assert.doesNotMatch(html, /正在读这一句|function isWaitingForAiReply/);

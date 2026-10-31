@@ -152,6 +152,11 @@ body.reader-open .shelf { visibility: hidden; pointer-events: none; }
 ::highlight(books-paint) { background-color: color-mix(in srgb, var(--human) 30%, transparent); }
 .reader-flow { height: 100%; column-gap: 44px; column-fill: auto; font-size: 17px; line-height: 1.9; text-align: justify; transition: transform .26s cubic-bezier(.22,.72,.16,1); will-change: transform; }
 .reader-flow.no-transition { transition: none; }
+.reader.scroll-mode .reader-viewport { overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+.reader.scroll-mode .reader-flow { height: auto; column-width: auto !important; column-count: auto; transform: none !important; transition: none; will-change: auto; }
+.chapter-navigation { display: flex; justify-content: space-between; gap: 16px; padding: 28px 0 36px; }
+.chapter-navigation button { min-height: 44px; padding: 8px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text); font: inherit; }
+.chapter-navigation button:disabled { opacity: .4; }
 .reader-flow p { margin-bottom: 0.9em; text-indent: 2em; }
 .reader-flow p.is-title { text-indent: 0; font-weight: 700; font-size: 1.12em; }
 .reader-foot { text-align: center; font-size: 12px; color: var(--faint); padding: 6px 0 max(10px, env(safe-area-inset-bottom)); }
@@ -234,8 +239,8 @@ body.reader-open .shelf { visibility: hidden; pointer-events: none; }
 .stepper output { color: var(--muted); font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; }
 .page-mode-section { min-height: 48px; display: grid; grid-template-columns: 1fr auto; align-items: center; }
 .page-mode-label { color: var(--muted); font-size: 12px; }
-.page-mode { position: relative; width: 168px; padding: 3px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: 10px; background: color-mix(in srgb, var(--text) 8%, var(--card)); }
-.page-mode::before { content: ''; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 2); border-radius: 7px; background: var(--card); box-shadow: 0 1px 3px var(--shadow); transform: translateX(var(--page-mode-position, 0%)); transition: transform .22s cubic-bezier(.22,.72,.16,1); }
+.page-mode { position: relative; width: min(270px, 70vw); padding: 3px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-radius: 10px; background: color-mix(in srgb, var(--text) 8%, var(--card)); }
+.page-mode::before { content: ''; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 7px; background: var(--card); box-shadow: 0 1px 3px var(--shadow); transform: translateX(var(--page-mode-position, 0%)); transition: transform .22s cubic-bezier(.22,.72,.16,1); }
 .page-mode button { position: relative; min-height: 34px; padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-family: inherit; font-size: 12px; }
 .page-mode button.on { color: var(--text); font-weight: 600; }
 
@@ -475,6 +480,7 @@ html:root[data-home-hosted="1"] .shelf-topbar { height: 44px; padding: 0 22px; j
   <section class="settings-section page-mode-section">
     <div class="page-mode-label">翻页</div>
     <div class="page-mode" id="page-mode">
+      <button type="button" data-mode="scroll">上下滚动</button>
       <button type="button" data-mode="swipe">左右滑动</button>
       <button type="button" data-mode="tap">两侧点按</button>
     </div>
@@ -552,11 +558,16 @@ if (PaintSelect.enabled) document.documentElement.classList.add('paint-select');
 /* ── 阅读设置（按设备记忆） ── */
 const SET_KEY = 'readalong-settings';
 const settings = Object.assign(
-  { fontSize: 17, lineHeight: 1.9, theme: 'pink', pageMode: 'tap' },
+  { fontSize: 17, lineHeight: 1.9, theme: 'pink', pageMode: 'scroll' },
   (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch { return {}; } })()
 );
 if (!['yellow', 'pink', 'night'].includes(settings.theme)) settings.theme = settings.theme === 'dark' ? 'night' : 'yellow';
-if (!['swipe', 'tap'].includes(settings.pageMode)) settings.pageMode = 'tap';
+// Enable the new reading mode once for existing installations as well.
+if (!settings.pageModeVersion || !['scroll', 'swipe', 'tap'].includes(settings.pageMode)) {
+  settings.pageMode = 'scroll';
+  settings.pageModeVersion = 1;
+  saveSettings();
+}
 function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify(settings)); } catch {} }
 
 function applyTheme() {
@@ -582,7 +593,9 @@ function applyTypography() {
 }
 
 function applyPageMode() {
-  document.getElementById('page-mode').style.setProperty('--page-mode-position', settings.pageMode === 'tap' ? '100%' : '0%');
+  reader.classList.toggle('scroll-mode', settings.pageMode === 'scroll');
+  document.documentElement.classList.toggle('paint-select', PaintSelect.enabled && settings.pageMode !== 'scroll');
+  document.getElementById('page-mode').style.setProperty('--page-mode-position', { scroll: '0%', swipe: '100%', tap: '200%' }[settings.pageMode]);
   document.querySelectorAll('#page-mode button').forEach((button) => {
     const active = button.dataset.mode === settings.pageMode;
     button.classList.toggle('on', active);
@@ -1091,6 +1104,10 @@ async function showChapter(chIdx, seq) {
   rFlow.classList.add('no-transition');
   renderChapterHtml(ch);
   paginate();
+  if (settings.pageMode === 'scroll') {
+    restoreReadingAnchor({ seq: Number.isInteger(seq) ? seq : ch.baseSeq, offset: 0 });
+    return;
+  }
   let page = 0;
   if (Number.isInteger(seq)) {
     const paraIdx = Math.max(0, Math.min(ch.paragraphs.length - 1, seq - ch.baseSeq));
@@ -1112,6 +1129,9 @@ function renderChapterHtml(ch) {
     const cls = i === 0 && text === ch.title ? ' class="is-title"' : '';
     return `<p data-i="${i}"${cls}>${renderParaHtml(text, annosByPara[i] || [])}</p>`;
   }).join('');
+  if (settings.pageMode === 'scroll') {
+    rFlow.insertAdjacentHTML('beforeend', `<nav class="chapter-navigation" aria-label="章节导航"><button type="button" data-chapter-step="-1"${R.ch === 0 ? ' disabled' : ''}>上一章</button><button type="button" data-chapter-step="1"${R.ch >= R.manifest.chapterCount - 1 ? ' disabled' : ''}>下一章</button></nav>`);
+  }
 }
 
 function renderParaHtml(text, annos) {
@@ -1155,6 +1175,14 @@ function renderParaHtml(text, annos) {
 }
 
 function paginate() {
+  if (settings.pageMode === 'scroll') {
+    rFlow.style.transform = 'none';
+    rFlow.style.columnWidth = 'auto';
+    R.page = 0;
+    R.pages = 1;
+    R.paraPages = [];
+    return;
+  }
   const w = rViewport.clientWidth - 44; /* padding 22*2 */
   const gap = 44;
   R.step = w + gap;
@@ -1174,6 +1202,19 @@ function paginate() {
 
 function currentParaRange() {
   const ch = R.chapters[R.ch];
+  if (settings.pageMode === 'scroll') {
+    if (!ch) return null;
+    const viewport = rViewport.getBoundingClientRect();
+    const visible = [...rFlow.querySelectorAll('p[data-i]')].filter(p => {
+      const rect = p.getBoundingClientRect();
+      return rect.bottom > viewport.top && rect.top < viewport.bottom;
+    });
+    const last = Math.max(0, ch.paragraphs.length - 1);
+    return {
+      seqStart: ch.baseSeq + (visible.length ? Number(visible[0].dataset.i) : last),
+      seqEnd: ch.baseSeq + (visible.length ? Number(visible[visible.length - 1].dataset.i) : last),
+    };
+  }
   let first = null;
   let last = null;
   R.paraPages.forEach((pp, i) => {
@@ -1187,6 +1228,7 @@ function currentParaRange() {
 }
 
 function gotoPage(page, { silentIfSame = true } = {}) {
+  if (settings.pageMode === 'scroll') { updateScrollProgress(); return; }
   const clamped = Math.max(0, Math.min(R.pages - 1, page));
   if (silentIfSame && clamped === R.page) return;
   R.page = clamped;
@@ -1198,6 +1240,56 @@ function gotoPage(page, { silentIfSame = true } = {}) {
   updateMarkBtn();
   if (range) sendBeat('page', range);
 }
+
+function captureReadingAnchor() {
+  const range = currentParaRange();
+  if (!range) return null;
+  const paragraph = rFlow.querySelector(`p[data-i="${range.seqStart - R.chapters[R.ch].baseSeq}"]`);
+  return {
+    seq: range.seqStart,
+    offset: settings.pageMode === 'scroll' && paragraph
+      ? rViewport.getBoundingClientRect().top + parseFloat(getComputedStyle(rViewport).paddingTop) - paragraph.getBoundingClientRect().top
+      : 0,
+  };
+}
+
+function restoreReadingAnchor(anchor) {
+  const ch = R.chapters[R.ch];
+  const index = Math.max(0, Math.min(ch.paragraphs.length - 1, (anchor?.seq ?? ch.baseSeq) - ch.baseSeq));
+  if (settings.pageMode === 'scroll') {
+    const paragraph = rFlow.querySelector(`p[data-i="${index}"]`);
+    if (paragraph) rViewport.scrollTop += paragraph.getBoundingClientRect().top
+      - rViewport.getBoundingClientRect().top - parseFloat(getComputedStyle(rViewport).paddingTop)
+      + Math.min(anchor?.offset || 0, Math.max(0, paragraph.getBoundingClientRect().height - 1));
+    updateScrollProgress(true);
+  } else {
+    gotoPage(R.paraPages[index]?.start || 0, { silentIfSame: false });
+    requestAnimationFrame(() => rFlow.classList.remove('no-transition'));
+  }
+}
+
+function updateScrollProgress(record = false) {
+  if (settings.pageMode !== 'scroll' || !R.manifest || !R.chapters[R.ch]) return;
+  const range = currentParaRange();
+  R.scrollAnchor = captureReadingAnchor();
+  const progress = range ? Math.round(((range.seqStart + 1) / R.manifest.paraCount) * 1000) / 10 : 0;
+  rFoot.textContent = `${R.chapters[R.ch].title} · ${progress}%`;
+  updateMarkBtn();
+  if (record && range) sendBeat('page', range);
+}
+
+let readerScrollTimer = null;
+let readerScrollFrame = null;
+rViewport.addEventListener('scroll', () => {
+  if (settings.pageMode !== 'scroll' || !reader.classList.contains('open')) return;
+  R.suppressReaderClickUntil = Date.now() + 150;
+  if (!readerScrollFrame) readerScrollFrame = requestAnimationFrame(() => {
+    readerScrollFrame = null;
+    updateScrollProgress();
+  });
+  clearTimeout(readerScrollTimer);
+  readerScrollTimer = setTimeout(() => { readerScrollTimer = null; updateScrollProgress(true); }, 350);
+}, { passive: true });
 
 async function turnPage(dir) {
   clearNativeSelection();
@@ -1224,7 +1316,7 @@ function beatPayload(event) {
     chapter: R.ch,
     seqStart: range.seqStart,
     seqEnd: range.seqEnd,
-    pageKey: `c${R.ch}p${R.page}`,
+    pageKey: settings.pageMode === 'scroll' ? `c${R.ch}s${range.seqStart ?? 0}` : `c${R.ch}p${R.page}`,
   };
 }
 
@@ -1256,6 +1348,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function exitReader() {
+  clearTimeout(readerScrollTimer);
+  readerScrollTimer = null;
+  if (R.sessionOpen) updateScrollProgress(true);
   if (R.sessionOpen) {
     sendBeat('close');
     R.sessionOpen = false;
@@ -1330,6 +1425,16 @@ function closeBar() { reader.classList.remove('bar-open'); }
 
 reader.addEventListener('click', async (e) => {
   if (e.target.closest('#r-back')) { exitReader(); return; }
+  const chapterStep = e.target.closest('[data-chapter-step]');
+  if (chapterStep) {
+    const dir = Number(chapterStep.dataset.chapterStep);
+    const chapter = R.ch + dir;
+    if (chapter >= 0 && chapter < R.manifest.chapterCount) {
+      await showChapter(chapter, null);
+      if (dir < 0) rViewport.scrollTop = rViewport.scrollHeight;
+    }
+    return;
+  }
   if (e.target.closest('#selection-tools')) return;
   if (e.target.closest('#r-mark')) { toggleBookmark(); return; }
 
@@ -1671,6 +1776,7 @@ function finishPaint() {
 if (PaintSelect.enabled) {
   rViewport.addEventListener('touchstart', (event) => {
     cancelPaintHold();
+    if (settings.pageMode === 'scroll') return;
     if (event.touches.length !== 1 || document.querySelector('.sheet.open')) return;
     const touch = event.touches[0];
     PaintSelect.startX = touch.clientX;
@@ -1844,8 +1950,14 @@ function replyFeedbackFor(anno) {
     return { status: 'replying', text: `${replyPartnerLabel()}在回你` };
   }
   const human = comments[lastHuman];
+  if (human?.source === 'chatgpt' && !human.delivery) {
+    return { status: 'saved', text: '已保存到书房，可在 ChatGPT 中继续共读' };
+  }
+  if (human?.delivery?.status === 'saved') {
+    return { status: 'saved', text: '已保存到书房；未启用自动通知' };
+  }
   if (human?.delivery?.status === 'failed') {
-    return { status: 'failed', text: '这次没送到', comment: human };
+    return { status: 'failed', text: '评论已保存，通知未送达', comment: human };
   }
   return null;
 }
@@ -1859,7 +1971,10 @@ function replyFeedbackHtml(feedback) {
     return `<div class="reply-feedback from-companion"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>${esc(feedback.text)}</span></div>`;
   }
   if (feedback.status === 'failed') {
-    return `<div class="reply-feedback to-companion"><span>${esc(feedback.text)}</span><button class="reply-retry" type="button" data-retry-reply>再试一次</button></div>`;
+    return `<div class="reply-feedback to-companion"><span>${esc(feedback.text)}</span><button class="reply-retry" type="button" data-retry-reply>${feedback.comment?.id ? '重试通知' : '重试保存'}</button></div>`;
+  }
+  if (feedback.status === 'saved') {
+    return `<div class="reply-feedback to-companion" role="status">${esc(feedback.text)}</div>`;
   }
   return '';
 }
@@ -2008,7 +2123,7 @@ async function submitThreadReply({ text, clientId, retryDelivery = false, clearI
   R.replyDelivery = {
     annotationId: R.detailAnno.id,
     status: 'sending',
-    text: `正在送给${replyPartnerLabel()}`,
+    text: '正在保存评论',
     comment: { text, clientId },
   };
   renderComments(R.detailAnno);
@@ -2036,20 +2151,25 @@ async function submitThreadReply({ text, clientId, retryDelivery = false, clearI
         });
       }
     }
+    if (R.detailAnno?.id !== activeAnnotationId) return;
     mergeDetailComment(result.comment);
     R.replyDelivery = null;
     renderComments(R.detailAnno);
-    if (clearInput) { document.getElementById('sheet-text').value = ''; resizeAnnotationInput(); }
+    if (clearInput && document.getElementById('sheet-text').value.trim() === text) {
+      document.getElementById('sheet-text').value = '';
+      resizeAnnotationInput();
+    }
     await refreshAnnos({ rerender: reader.classList.contains('open') });
   } catch (error) {
+    if (R.detailAnno?.id !== activeAnnotationId) return;
     R.replyDelivery = {
-      annotationId: R.detailAnno.id,
+      annotationId: activeAnnotationId,
       status: 'failed',
-      text: '这次没送到',
+      text: '评论未能保存，输入内容已保留',
       comment: { text, clientId },
     };
     renderComments(R.detailAnno);
-    toast('这次没送到，再试一次');
+    toast('评论未能保存：' + error.message);
   } finally {
     sendButton.disabled = false;
     if (R.detailAnno?.id === activeAnnotationId && sheet.classList.contains('open')) startDetailPolling();
@@ -2102,7 +2222,7 @@ document.getElementById('sheet-comments').addEventListener('click', async (event
     .slice().reverse().find((comment) => comment.author === 'human' && comment.delivery?.status === 'failed');
   const target = local || persisted;
   if (!target?.text || !target?.clientId) return;
-  await submitThreadReply({ text: target.text, clientId: target.clientId, retryDelivery: true });
+  await submitThreadReply({ text: target.text, clientId: target.clientId, retryDelivery: true, clearInput: true });
 });
 
 document.getElementById('sheet-jump').addEventListener('click', async () => {
@@ -2124,29 +2244,24 @@ async function refreshAnnos({ rerender = false } = {}) {
     const { annotations } = await apiGet('/annotations/' + R.book.bookId);
     R.annos = annotations;
     if (rerender && reader.classList.contains('open')) {
-      const keep = R.page;
+      const anchor = captureReadingAnchor();
       rFlow.classList.add('no-transition');
       renderChapterHtml(R.chapters[R.ch]);
       paginate();
-      gotoPage(keep, { silentIfSame: false });
+      restoreReadingAnchor(anchor);
       requestAnimationFrame(() => rFlow.classList.remove('no-transition'));
     }
   } catch {}
 }
 
-function relayout() {
+function relayout(anchor) {
   if (!reader.classList.contains('open') || !R.chapters[R.ch]) return;
+  if (!anchor || !Number.isInteger(anchor.seq)) anchor = settings.pageMode === 'scroll' ? R.scrollAnchor || captureReadingAnchor() : captureReadingAnchor();
   clearNativeSelection();
-  const range = currentParaRange();
   rFlow.classList.add('no-transition');
   renderChapterHtml(R.chapters[R.ch]);
   paginate();
-  let page = 0;
-  if (range) {
-    const paraIdx = range.seqStart - R.chapters[R.ch].baseSeq;
-    page = R.paraPages[paraIdx] ? R.paraPages[paraIdx].start : 0;
-  }
-  gotoPage(page, { silentIfSame: false });
+  restoreReadingAnchor(anchor);
   requestAnimationFrame(() => rFlow.classList.remove('no-transition'));
 }
 
@@ -2172,12 +2287,13 @@ document.getElementById('toc-list').addEventListener('click', async (e) => {
 });
 
 function setTypography(key, value) {
+  const anchor = reader.classList.contains('open') ? captureReadingAnchor() : null;
   settings[key] = key === 'fontSize'
     ? clamp(Math.round(Number(value)), 15, 22)
     : clamp(Math.round(Number(value) * 10) / 10, 1.6, 2.4);
   saveSettings();
   applyTypography();
-  relayout();
+  relayout(anchor);
 }
 
 document.getElementById('typography-controls').addEventListener('click', (event) => {
@@ -2198,9 +2314,11 @@ document.getElementById('theme-seg').addEventListener('click', (e) => {
 document.getElementById('page-mode').addEventListener('click', (event) => {
   const button = event.target.closest('button');
   if (!button) return;
+  const anchor = reader.classList.contains('open') ? captureReadingAnchor() : null;
   settings.pageMode = button.dataset.mode;
   saveSettings();
   applyPageMode();
+  relayout(anchor);
 });
 
 document.getElementById('settings-close').addEventListener('click', closeSheet);

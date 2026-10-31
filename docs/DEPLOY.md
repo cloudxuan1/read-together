@@ -38,6 +38,16 @@ READING_DATA_DIR=/var/lib/books READING_PUSH_WEBHOOK= READING_PUSH_ENABLED=0 npm
 
 ## AI 与 ChatGPT
 
+如果独立网页主要和 ChatGPT 共读，在 Core 的私有环境配置里设置
+`READING_WEB_CHANNEL=chatgpt` 后重启 Core。网页会显示 ChatGPT 渠道的 AI 批注，
+网页回复也会保存到同一渠道，供 ChatGPT 的 Books 工具读取。
+默认值 `codex` 保持原有 Home / Books MCP 部署行为；两个 MCP 的认证与隔离不变。
+这项配置不提供网页自动唤醒 ChatGPT 的消息桥。没有消息桥时，评论仍能保存，
+可以回到 ChatGPT 中主动让共读者查看；已保存与通知失败会分别显示。
+
+阅读器默认使用上下滚动（旧设备设置会迁移一次），章末提供上一章和下一章。
+阅读设置中仍可选择左右滑动或两侧点按。阅读位置、书签和批注继续沿用原数据。
+
 Books MCP 使用 `deploy/books-mcp.env.example` 中的独立 access token 与 control token，启动命令为 `npm run mcp:start`。Core 的 `READING_MCP_CONTROL_TOKEN` 必须与 MCP 的 `BOOKS_MCP_CONTROL_TOKEN` 一致。实际凭据必须单独生成并保存在私有配置中。
 
 ChatGPT 入口使用另一个 Core control token，且其 OAuth 凭据应与 Books MCP 的凭据不同。部署示例中的授权入口需用书房密码认证，不能只保护书架页面。`deploy/guichao-books-*.service` 是示例，默认示例为 `/opt/books`、`books` 服务用户和 `/usr/bin/node`，请按实际服务用户、Node 路径、工作目录和环境文件修改；示例尚需在目标 Linux 环境验证。配置和接入边界见 [CHATGPT-ADAPTER.md](CHATGPT-ADAPTER.md)。只在确认 HTTPS、认证与数据备份之后连接真实账户。
