@@ -124,19 +124,19 @@ test('an AI-only margin note is not exposed as a shared selection', () => {
   assert.equal(store.readAnnotations(bookId)[0].comments.length, 1);
 });
 
-test('a human follow-up records failed delivery without duplicating the saved reply', async () => {
+test('a disabled notification bridge keeps the saved comment without reporting failure or duplicating retries', async () => {
   const bookId = seedSharedSelection();
   const body = { author: 'human', text: 'A test reply', clientId: 'human-reply-1' };
   let out = await addCommentWithDelivery(bookId, 'line-1', body, { wake: true });
   assert.equal(out.status, 200);
-  assert.equal(out.json.delivery.status, 'failed');
+  assert.equal(out.json.delivery.status, 'saved');
 
   out = await addCommentWithDelivery(bookId, 'line-1', { ...body, retryDelivery: true }, { wake: true });
   assert.equal(out.status, 200);
-  assert.equal(out.json.delivery.status, 'failed');
+  assert.equal(out.json.delivery.status, 'saved');
   const [annotation] = store.readAnnotations(bookId);
   assert.equal(annotation.comments.length, 1);
-  assert.equal(annotation.comments[0].delivery.status, 'failed');
+  assert.equal(annotation.comments[0].delivery.status, 'saved');
   assert.equal(annotation.comments[0].delivery.target, 'home');
   assert.equal(annotation.comments[0].delivery.deliveryId, annotation.comments[0].id);
 });

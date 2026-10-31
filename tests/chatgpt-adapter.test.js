@@ -429,7 +429,7 @@ test('GPT remount restores the saved book, paragraph and annotation without shar
   const window = {openai:{widgetState:{other:'keep',booksView:{version:1,reading:true,bookId:'sample',chapter:1,seq:23,annotationId:'saved-note'}},displayMode:'inline',
     async requestDisplayMode(){calls.push('expand');this.displayMode='fullscreen';return {mode:'fullscreen'}},
     setWidgetState(state){this.widgetState=state}}, dispatchEvent(){}};
-  const context = {requestAnimationFrame:fn=>fn(),rViewport:{getClientRects:()=>[{}]},window,R,Shelf:{},reader:{classList:{contains:()=>reading}},sheet:{classList:{contains:()=>true}},rFoot:{},document:{body:{}},
+  const context = {settings:{pageMode:'tap'},requestAnimationFrame:fn=>fn(),rViewport:{getClientRects:()=>[{}]},window,R,Shelf:{},reader:{classList:{contains:()=>reading}},sheet:{classList:{contains:()=>true}},rFoot:{},document:{body:{}},
     MutationObserver:class{observe(){}},CustomEvent:class{},boot:async()=>{},renderShelfCards(){},renderShelfContent(){},
     loadBookData:async id=>{calls.push(['load',id]);R.book={bookId:id};return true},
     enterReader:async(ch,seq)=>{calls.push(['read',ch,seq]);reading=true;R.ch=ch},
